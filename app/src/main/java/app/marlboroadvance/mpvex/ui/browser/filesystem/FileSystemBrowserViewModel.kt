@@ -111,7 +111,7 @@ class FileSystemBrowserViewModel(
     }
   }
 
-  init {
+init {
   if (initialPath == null) {
     viewModelScope.launch(Dispatchers.IO) {
       // Check for saved home path preference first
