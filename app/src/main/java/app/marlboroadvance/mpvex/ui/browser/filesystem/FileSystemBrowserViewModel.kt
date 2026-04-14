@@ -112,57 +112,54 @@ class FileSystemBrowserViewModel(
   }
 
   init {
-    // If no initial path was specified, check storage volumes and navigate accordingly
-    if (initialPath == null) {
-      viewModelScope.launch(Dispatchers.IO) {
+  if (initialPath == null) {
+    viewModelScope.launch(Dispatchers.IO) {
+      // Check for saved home path preference first
+      val savedHome = browserPreferences.fileManagerHomePath.get()
+      if (savedHome.isNotEmpty() && File(savedHome).exists()) {
+        homeDirectory = savedHome
+        Log.d(TAG, "Using saved home path: $savedHome")
+        _currentPath.value = savedHome
+        loadCurrentDirectory()
+      } else {
         val roots = MediaFileRepository.getStorageRoots(getApplication())
         if (roots.size == 1) {
-          // Only one storage volume, navigate directly to it and set as home
           val singleRoot = roots.first()
           homeDirectory = singleRoot.path
           Log.d(TAG, "Single storage volume found, setting as home: ${singleRoot.path}")
           _currentPath.value = singleRoot.path
         } else {
-          // Multiple roots - home is the storage roots view
           homeDirectory = null
         }
-        // If multiple roots or none, stay at STORAGE_ROOTS_MARKER
         loadCurrentDirectory()
       }
-    } else {
-      // Specific path provided - set it as home directory
-      homeDirectory = initialPath
-      Log.d(TAG, "Initial path provided, setting as home: $initialPath")
-      // Load initial directory - similar to Fossify's openPath() in onCreate
+    }
+  } else {
+    homeDirectory = initialPath
+    Log.d(TAG, "Initial path provided, setting as home: $initialPath")
+    loadCurrentDirectory()
+  }
+
+  viewModelScope.launch(Dispatchers.IO) {
+    MediaLibraryEvents.changes.collectLatest {
+      MediaFileRepository.clearCache()
       loadCurrentDirectory()
     }
+  }
 
-    // Refresh on global media library changes
-    // Similar to Fossify's media scan completion listener
-    viewModelScope.launch(Dispatchers.IO) {
-      MediaLibraryEvents.changes.collectLatest {
-        // Clear cache when media library changes
-        MediaFileRepository.clearCache()
-        loadCurrentDirectory()
-      }
-    }
-
-    // Apply sorting whenever items or sort preferences change
-    // Based on Fossify's ChangeSortingDialog callback and sorting logic
-    viewModelScope.launch {
-      combine(
-        _unsortedItems,
-        browserPreferences.folderSortType.changes(),
-        browserPreferences.folderSortOrder.changes(),
-      ) { items, sortType, sortOrder ->
-        // Sort using the same logic as Fossify's FileDirItem.sort()
-        SortUtils.sortFileSystemItems(items, sortType, sortOrder)
-      }.collectLatest { sortedItems ->
-        _items.value = sortedItems
-        Log.d(TAG, "Items sorted: ${sortedItems.size} items")
-      }
+  viewModelScope.launch {
+    combine(
+      _unsortedItems,
+      browserPreferences.folderSortType.changes(),
+      browserPreferences.folderSortOrder.changes(),
+    ) { items, sortType, sortOrder ->
+      SortUtils.sortFileSystemItems(items, sortType, sortOrder)
+    }.collectLatest { sortedItems ->
+      _items.value = sortedItems
+      Log.d(TAG, "Items sorted: ${sortedItems.size} items")
     }
   }
+}
 
   /**
    * Refresh current directory
